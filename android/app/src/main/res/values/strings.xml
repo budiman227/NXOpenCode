@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NX OpenCode</string>
+    <string name="setup_preparing">Preparing</string>
+    <string name="setup_runtime">Installing runtime</string>
+    <string name="setup_interface">Installing interface</string>
+    <string name="setup_starting">Starting server</string>
+    <string name="notification_channel">Server</string>
+    <string name="notification_starting">Starting</string>
+    <string name="notification_running">Server running</string>
+    <string name="notification_failed">Server failed</string>
+    <string name="error_prefix">Server could not start</string>
+    <string name="error_node_missing">Node runtime not found in the package</string>
+    <string name="error_timeout">Server did not become ready in time</string>
+    <string name="error_exited">Server process exited unexpectedly</string>
+</resources>

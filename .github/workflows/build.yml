@@ -1,0 +1,122 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      opencode_ref:
+        description: opencode branch or tag to build from
+        required: false
+        default: dev
+      node_tag:
+        description: Release tag holding the Android Node.js binary
+        required: false
+        default: node-arm64-v22.x
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.7
+
+      - name: Fetch opencode source
+        run: |
+          git clone --depth 1 --branch "${{ inputs.opencode_ref || 'dev' }}" https://github.com/anomalyco/opencode.git work
+          echo "OPENCODE_VERSION=$(node -p "require('./work/package.json').version || '0.0.0'")" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        working-directory: work
+        run: bun install --ignore-scripts
+
+      - name: Build server bundle
+        run: |
+          mkdir -p work/packages/cli/mobile
+          cp server/server.ts server/build.ts work/packages/cli/mobile/
+          cd work/packages/cli
+          MOBILE_OUTDIR="$GITHUB_WORKSPACE/staging/runtime" bun run mobile/build.ts
+
+      - name: Build web interface
+        working-directory: work/packages/app
+        run: bun run build
+
+      - name: Stage web assets
+        run: |
+          mkdir -p staging/web
+          cd work/packages/app/dist
+          find . -type f ! -name '*.map' -exec cp --parents {} "$GITHUB_WORKSPACE/staging/web/" \;
+          du -sh "$GITHUB_WORKSPACE/staging/web" "$GITHUB_WORKSPACE/staging/runtime"
+
+      - name: Download Android Node.js runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          gh release download "${{ inputs.node_tag || 'node-arm64-v22.x' }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern 'lib*.so' \
+            --dir android/app/src/main/jniLibs/arm64-v8a
+          ls -lh android/app/src/main/jniLibs/arm64-v8a
+
+      - name: Stage APK assets
+        run: |
+          mkdir -p android/app/src/main/assets
+          cp -r staging/runtime android/app/src/main/assets/runtime
+          cp -r staging/web android/app/src/main/assets/web
+          du -sh android/app/src/main/assets/*
+
+      - name: Build APKs
+        working-directory: android
+        run: gradle assembleDebug assembleRelease --no-daemon --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+
+      - name: Collect APKs
+        run: |
+          mkdir -p out
+          find android/app/build/outputs/apk -name '*.apk' -exec cp {} out/ \;
+          ls -lh out
+
+      - name: Capture failure log
+        if: failure()
+        run: |
+          mkdir -p out
+          tail -n 400 build.log > out/error.txt 2>/dev/null || echo "no build log" > out/error.txt
+
+      - name: Report failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs')
+            let log = 'no log captured'
+            try { log = fs.readFileSync('out/error.txt', 'utf8').slice(-8000) } catch {}
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Build failed: run ${context.runId}`,
+              body: '```\n' + log + '\n```',
+            })
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nxopencode-apk
+          path: out/

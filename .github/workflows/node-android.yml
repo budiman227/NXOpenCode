@@ -1,0 +1,104 @@
+name: node-android
+
+on:
+  workflow_dispatch:
+    inputs:
+      node_branch:
+        description: Node.js source branch or tag
+        required: false
+        default: v22.x
+      sdk_version:
+        description: Android API level
+        required: false
+        default: "24"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 ninja-build ccache
+
+      - name: Set up NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r26d
+          local-cache: false
+
+      - name: Fetch Node.js source
+        run: |
+          git clone --depth 1 --branch "${{ inputs.node_branch }}" https://github.com/nodejs/node.git node-src
+          cd node-src
+          echo "NODE_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || cat src/node_version.h | grep -E 'NODE_(MAJOR|MINOR|PATCH)_VERSION' | awk '{print $3}' | paste -sd. -)" >> "$GITHUB_ENV"
+
+      - name: Apply Android patches
+        working-directory: node-src
+        run: ./android-configure patch || true
+
+      - name: Configure
+        working-directory: node-src
+        env:
+          NDK: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
+          echo "TOOLCHAIN=$TOOLCHAIN" >> "$GITHUB_ENV"
+          export PATH="$PATH:$TOOLCHAIN/bin"
+          export CC="$TOOLCHAIN/bin/aarch64-linux-android${{ inputs.sdk_version }}-clang"
+          export CXX="$TOOLCHAIN/bin/aarch64-linux-android${{ inputs.sdk_version }}-clang++"
+          export GYP_DEFINES="target_arch=arm64 v8_target_arch=arm64 android_target_arch=arm64 host_os=linux OS=android android_ndk_path=$NDK"
+          ./configure \
+            --dest-cpu=arm64 \
+            --dest-os=android \
+            --cross-compiling \
+            --openssl-no-asm \
+            --with-intl=small-icu \
+            --without-node-snapshot \
+            --without-corepack
+
+      - name: Build
+        working-directory: node-src
+        run: make -j"$(nproc)" 2>&1 | tail -n 200
+
+      - name: Strip and verify
+        working-directory: node-src
+        run: |
+          "$TOOLCHAIN/bin/llvm-strip" out/Release/node
+          mkdir -p ../artifact
+          cp out/Release/node ../artifact/libnode.so
+          cp "$TOOLCHAIN/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" ../artifact/libc++_shared.so
+          cd ../artifact
+          file libnode.so
+          readelf -d libnode.so | grep NEEDED
+          ls -lh
+
+      - name: Capture failure log
+        if: failure()
+        run: |
+          mkdir -p artifact
+          tail -n 400 node-src/config.log > artifact/error.txt 2>/dev/null || echo "no config.log" > artifact/error.txt
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-android-arm64
+          path: artifact/
+
+      - name: Publish release
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="node-arm64-${{ inputs.node_branch }}"
+          gh release delete "$TAG" --yes --cleanup-tag || true
+          gh release create "$TAG" \
+            --title "Node.js for Android arm64 (${{ inputs.node_branch }})" \
+            --notes "Cross-compiled with NDK r26d, API ${{ inputs.sdk_version }}, small-icu." \
+            artifact/libnode.so artifact/libc++_shared.so
