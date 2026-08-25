@@ -30,7 +30,7 @@ jobs:
         uses: nttld/setup-ndk@v1
         id: ndk
         with:
-          ndk-version: r26d
+          ndk-version: r29
           local-cache: false
 
       - name: Fetch Node.js source
@@ -109,7 +109,6 @@ jobs:
             --dest-os=android \
             --cross-compiling \
             --without-npm \
-            --without-corepack \
             --without-node-snapshot \
             --openssl-no-asm \
             --with-intl=small-icu \
@@ -187,5 +186,5 @@ jobs:
           gh release delete "$TAG" --yes --cleanup-tag || true
           gh release create "$TAG" \
             --title "Node.js for Android arm64 (${{ inputs.node_tag }})" \
-            --notes "Cross-compiled with NDK r26d, API ${{ inputs.sdk_version }}, small-icu, Termux Android patches." \
+            --notes "Cross-compiled with NDK r29, API ${{ inputs.sdk_version }}, small-icu, Termux Android patches." \
             artifact/libnode.so artifact/libc++_shared.so
