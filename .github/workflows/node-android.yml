@@ -24,7 +24,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3 ninja-build patch
+          sudo apt-get install -y python3 ninja-build patch ccache
 
       - name: Set up NDK
         uses: nttld/setup-ndk@v1
@@ -32,6 +32,14 @@ jobs:
         with:
           ndk-version: r29
           local-cache: false
+
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: node-ccache-${{ inputs.node_tag }}-${{ github.run_id }}
+          restore-keys: |
+            node-ccache-${{ inputs.node_tag }}-
 
       - name: Fetch Node.js source
         run: git clone --depth 1 --branch "${{ inputs.node_tag }}" https://github.com/nodejs/node.git node-src
@@ -76,6 +84,13 @@ jobs:
           echo "failed patches:$FAILED"
           echo "PATCH_FAILURES=$FAILED" >> "$GITHUB_ENV"
 
+      - name: Use the Linux cpu feature path for bundled zlib
+        working-directory: node-src
+        run: |
+          set -e
+          sed -i 's/ARMV8_OS_ANDROID/ARMV8_OS_LINUX/g' deps/zlib/zlib.gyp
+          grep -c ARMV8_OS_LINUX deps/zlib/zlib.gyp
+
       - name: Configure and build
         working-directory: node-src
         env:
@@ -87,12 +102,16 @@ jobs:
           echo "TOOLCHAIN=$TOOLCHAIN" >> "$GITHUB_ENV"
           export PATH="$PATH:$TOOLCHAIN/bin"
 
-          export CC="$TOOLCHAIN/bin/aarch64-linux-android${{ inputs.sdk_version }}-clang"
-          export CXX="$TOOLCHAIN/bin/aarch64-linux-android${{ inputs.sdk_version }}-clang++"
+          export CCACHE_DIR="$HOME/.ccache"
+          export CCACHE_MAXSIZE=5G
+          ccache --zero-stats || true
+
+          export CC="ccache $TOOLCHAIN/bin/aarch64-linux-android${{ inputs.sdk_version }}-clang"
+          export CXX="ccache $TOOLCHAIN/bin/aarch64-linux-android${{ inputs.sdk_version }}-clang++"
           export AR="$TOOLCHAIN/bin/llvm-ar"
           export RANLIB="$TOOLCHAIN/bin/llvm-ranlib"
-          export CC_host=gcc
-          export CXX_host=g++
+          export CC_host="ccache gcc"
+          export CXX_host="ccache g++"
           export LINK_host=g++
 
           export CFLAGS="-Daligned_alloc=memalign"
@@ -100,7 +119,7 @@ jobs:
 
           export GYP_DEFINES="host_os=linux"
 
-          echo "target compiler:"; "$CC" --version | head -1
+          echo "target compiler:"; $CC --version | head -1
           echo "host compiler:"; g++ --version | head -1
 
           ./configure --help > "$GITHUB_WORKSPACE/configure-help.txt" 2>&1 || true
@@ -119,6 +138,7 @@ jobs:
 
           ninja -C out/Release -j"$(nproc)" 2>&1 | tee "$GITHUB_WORKSPACE/node-build.log"
 
+          ccache --show-stats || true
           test -f out/Release/node || { echo "node binary was not produced"; exit 1; }
           file out/Release/node
 
