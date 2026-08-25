@@ -91,16 +91,17 @@ jobs:
           export CXX="$TOOLCHAIN/bin/aarch64-linux-android${{ inputs.sdk_version }}-clang++"
           export AR="$TOOLCHAIN/bin/llvm-ar"
           export RANLIB="$TOOLCHAIN/bin/llvm-ranlib"
-          export CC_host=clang
-          export CXX_host=clang++
-          export LINK_host=clang++
+          export CC_host=gcc
+          export CXX_host=g++
+          export LINK_host=g++
 
           export CFLAGS="-Daligned_alloc=memalign"
           export CXXFLAGS="-Daligned_alloc=memalign"
 
           export GYP_DEFINES="host_os=linux"
 
-          "$CC" --version
+          echo "target compiler:"; "$CC" --version | head -1
+          echo "host compiler:"; g++ --version | head -1
 
           ./configure --help > "$GITHUB_WORKSPACE/configure-help.txt" 2>&1 || true
 
