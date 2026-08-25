@@ -41,19 +41,29 @@ jobs:
 
       - name: Apply Android patches
         working-directory: node-src
-        run: ./android-configure patch || true
+        run: |
+          set -e
+          ./android-configure patch
+          grep -n "MacOS\|__arm64__" deps/v8/src/trap-handler/trap-handler.h | head -5 || true
 
-      - name: Configure
+      - name: Configure and build
         working-directory: node-src
         env:
           NDK: ${{ steps.ndk.outputs.ndk-path }}
         run: |
+          set -e
+          set -o pipefail
           TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
           echo "TOOLCHAIN=$TOOLCHAIN" >> "$GITHUB_ENV"
           export PATH="$PATH:$TOOLCHAIN/bin"
           export CC="$TOOLCHAIN/bin/aarch64-linux-android${{ inputs.sdk_version }}-clang"
           export CXX="$TOOLCHAIN/bin/aarch64-linux-android${{ inputs.sdk_version }}-clang++"
+          export CC_host=gcc
+          export CXX_host=g++
           export GYP_DEFINES="target_arch=arm64 v8_target_arch=arm64 android_target_arch=arm64 host_os=linux OS=android android_ndk_path=$NDK"
+
+          "$CC" --version
+
           ./configure \
             --dest-cpu=arm64 \
             --dest-os=android \
@@ -63,11 +73,12 @@ jobs:
             --without-node-snapshot \
             --without-corepack
 
-      - name: Build
-        working-directory: node-src
-        run: |
-          set -o pipefail
+          test -f config.gypi || { echo "configure did not produce config.gypi"; exit 1; }
+
           make -j"$(nproc)" 2>&1 | tee "$GITHUB_WORKSPACE/node-build.log"
+
+          test -f out/Release/node || { echo "node binary was not produced"; exit 1; }
+          file out/Release/node
 
       - name: Strip and verify
         working-directory: node-src
