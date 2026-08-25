@@ -12,7 +12,7 @@ on:
       node_tag:
         description: Release tag holding the Android Node.js binary
         required: false
-        default: node-arm64-v22.x
+        default: node-arm64-v26.4.0
 
 permissions:
   contents: read
@@ -70,7 +70,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p android/app/src/main/jniLibs/arm64-v8a
-          gh release download "${{ inputs.node_tag || 'node-arm64-v22.x' }}" \
+          gh release download "${{ inputs.node_tag || 'node-arm64-v26.4.0' }}" \
             --repo "$GITHUB_REPOSITORY" \
             --pattern 'lib*.so' \
             --dir android/app/src/main/jniLibs/arm64-v8a

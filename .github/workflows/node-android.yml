@@ -3,10 +3,10 @@ name: node-android
 on:
   workflow_dispatch:
     inputs:
-      node_branch:
-        description: Node.js source branch or tag
+      node_tag:
+        description: Node.js source tag
         required: false
-        default: v22.x
+        default: v26.4.0
       sdk_version:
         description: Android API level
         required: false
@@ -24,7 +24,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3 ninja-build ccache
+          sudo apt-get install -y python3 ninja-build patch
 
       - name: Set up NDK
         uses: nttld/setup-ndk@v1
@@ -34,17 +34,47 @@ jobs:
           local-cache: false
 
       - name: Fetch Node.js source
-        run: |
-          git clone --depth 1 --branch "${{ inputs.node_branch }}" https://github.com/nodejs/node.git node-src
-          cd node-src
-          echo "NODE_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || cat src/node_version.h | grep -E 'NODE_(MAJOR|MINOR|PATCH)_VERSION' | awk '{print $3}' | paste -sd. -)" >> "$GITHUB_ENV"
+        run: git clone --depth 1 --branch "${{ inputs.node_tag }}" https://github.com/nodejs/node.git node-src
 
-      - name: Apply Android patches
+      - name: Apply Termux Android patches
         working-directory: node-src
         run: |
           set -e
-          ./android-configure patch
-          grep -n "MacOS\|__arm64__" deps/v8/src/trap-handler/trap-handler.h | head -5 || true
+          BASE=https://raw.githubusercontent.com/termux/termux-packages/master/packages/nodejs
+          PATCHES="
+            avoid-ficlone-ioctl.patch
+            common.gypi.patch
+            deps-uv-src-unix-core.c.patch
+            deps-uv-src-unix-process.c.patch
+            deps-uv-uv.gyp.patch
+            deps-uvwasi-src-uvwasi.c.patch
+            deps-v8-src-flags-flag-definitions.h.patch
+            deps-v8-src-trap-handler-trap-handler.h.patch
+            fix_multiple_definitions.patch
+            lib-child_process.js.patch
+            lib-os.js.patch
+            node.gyp.patch
+            src-debug_utils.cc.patch
+            src-getaddrinfo.patch
+            src-node_internals.h.patch
+            src-node_report.cc.patch
+            tools-gyp-pylib-gyp-generator-ninja.py.patch
+            tools-v8_gypfiles-toolchain.gypi.patch
+            tools-v8_gypfiles-v8.gyp.patch
+          "
+          mkdir -p /tmp/patches
+          FAILED=""
+          for name in $PATCHES; do
+            curl -fsSL "$BASE/$name" -o "/tmp/patches/$name"
+            if patch -p1 -N --no-backup-if-mismatch -i "/tmp/patches/$name"; then
+              echo "applied $name"
+            else
+              echo "FAILED $name"
+              FAILED="$FAILED $name"
+            fi
+          done
+          echo "failed patches:$FAILED"
+          echo "PATCH_FAILURES=$FAILED" >> "$GITHUB_ENV"
 
       - name: Configure and build
         working-directory: node-src
@@ -56,11 +86,19 @@ jobs:
           TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
           echo "TOOLCHAIN=$TOOLCHAIN" >> "$GITHUB_ENV"
           export PATH="$PATH:$TOOLCHAIN/bin"
+
           export CC="$TOOLCHAIN/bin/aarch64-linux-android${{ inputs.sdk_version }}-clang"
           export CXX="$TOOLCHAIN/bin/aarch64-linux-android${{ inputs.sdk_version }}-clang++"
-          export CC_host=gcc
-          export CXX_host=g++
-          export GYP_DEFINES="target_arch=arm64 v8_target_arch=arm64 android_target_arch=arm64 host_os=linux OS=android android_ndk_path=$NDK"
+          export AR="$TOOLCHAIN/bin/llvm-ar"
+          export RANLIB="$TOOLCHAIN/bin/llvm-ranlib"
+          export CC_host=clang
+          export CXX_host=clang++
+          export LINK_host=clang++
+
+          export CFLAGS="-Daligned_alloc=memalign"
+          export CXXFLAGS="-Daligned_alloc=memalign"
+
+          export GYP_DEFINES="host_os=linux"
 
           "$CC" --version
 
@@ -68,14 +106,16 @@ jobs:
             --dest-cpu=arm64 \
             --dest-os=android \
             --cross-compiling \
+            --without-npm \
+            --without-corepack \
+            --without-node-snapshot \
             --openssl-no-asm \
             --with-intl=small-icu \
-            --without-node-snapshot \
-            --without-corepack
+            --ninja
 
-          test -f config.gypi || { echo "configure did not produce config.gypi"; exit 1; }
+          test -f config.gypi || { echo "configure produced no config.gypi"; exit 1; }
 
-          make -j"$(nproc)" 2>&1 | tee "$GITHUB_WORKSPACE/node-build.log"
+          ninja -C out/Release -j"$(nproc)" 2>&1 | tee "$GITHUB_WORKSPACE/node-build.log"
 
           test -f out/Release/node || { echo "node binary was not produced"; exit 1; }
           file out/Release/node
@@ -83,6 +123,7 @@ jobs:
       - name: Strip and verify
         working-directory: node-src
         run: |
+          set -e
           "$TOOLCHAIN/bin/llvm-strip" out/Release/node
           mkdir -p ../artifact
           cp out/Release/node ../artifact/libnode.so
@@ -97,8 +138,10 @@ jobs:
         run: |
           mkdir -p artifact
           {
+            echo "failed patches: ${PATCH_FAILURES:-none}"
+            echo
             echo "=== matched errors ==="
-            grep -nE "error:|fatal error|No rule to make|Error [0-9]+$|\*\*\*" "$GITHUB_WORKSPACE/node-build.log" | head -n 60 || true
+            grep -nE "error:|fatal error|No rule to make|ninja: build stopped|FAILED:" "$GITHUB_WORKSPACE/node-build.log" | head -n 60 || true
             echo
             echo "=== last 200 lines ==="
             tail -n 200 "$GITHUB_WORKSPACE/node-build.log" || echo "no build log"
@@ -132,9 +175,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="node-arm64-${{ inputs.node_branch }}"
+          TAG="node-arm64-${{ inputs.node_tag }}"
           gh release delete "$TAG" --yes --cleanup-tag || true
           gh release create "$TAG" \
-            --title "Node.js for Android arm64 (${{ inputs.node_branch }})" \
-            --notes "Cross-compiled with NDK r26d, API ${{ inputs.sdk_version }}, small-icu." \
+            --title "Node.js for Android arm64 (${{ inputs.node_tag }})" \
+            --notes "Cross-compiled with NDK r26d, API ${{ inputs.sdk_version }}, small-icu, Termux Android patches." \
             artifact/libnode.so artifact/libc++_shared.so
