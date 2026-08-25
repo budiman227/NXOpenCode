@@ -132,7 +132,6 @@ jobs:
             --without-node-snapshot \
             --v8-disable-temporal-support \
             --openssl-no-asm \
-            --v8-disable-temporal-support \
             --with-intl=small-icu \
             --ninja 2>&1 | tee "$GITHUB_WORKSPACE/node-configure.log"
 
@@ -192,13 +191,6 @@ jobs:
               title: `Node build failed: run ${context.runId}`,
               body: '```\n' + log + '\n```',
             })
-
-      - name: Save compiler cache
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: ~/.ccache
-          key: node-ccache-${{ inputs.node_tag }}-${{ github.run_id }}
 
       - name: Save compiler cache
         if: always()
