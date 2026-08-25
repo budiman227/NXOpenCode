@@ -102,6 +102,8 @@ jobs:
 
           "$CC" --version
 
+          ./configure --help > "$GITHUB_WORKSPACE/configure-help.txt" 2>&1 || true
+
           ./configure \
             --dest-cpu=arm64 \
             --dest-os=android \
@@ -111,7 +113,7 @@ jobs:
             --without-node-snapshot \
             --openssl-no-asm \
             --with-intl=small-icu \
-            --ninja
+            --ninja 2>&1 | tee "$GITHUB_WORKSPACE/node-configure.log"
 
           test -f config.gypi || { echo "configure produced no config.gypi"; exit 1; }
 
@@ -140,11 +142,17 @@ jobs:
           {
             echo "failed patches: ${PATCH_FAILURES:-none}"
             echo
-            echo "=== matched errors ==="
-            grep -nE "error:|fatal error|No rule to make|ninja: build stopped|FAILED:" "$GITHUB_WORKSPACE/node-build.log" | head -n 60 || true
+            echo "=== configure output ==="
+            tail -n 80 "$GITHUB_WORKSPACE/node-configure.log" 2>/dev/null || echo "no configure log"
             echo
-            echo "=== last 200 lines ==="
-            tail -n 200 "$GITHUB_WORKSPACE/node-build.log" || echo "no build log"
+            echo "=== configure flags containing snapshot/intl/openssl ==="
+            grep -oE "\-\-[a-z0-9-]*(snapshot|intl|openssl|corepack|npm|ninja)[a-z0-9-]*" "$GITHUB_WORKSPACE/configure-help.txt" 2>/dev/null | sort -u || true
+            echo
+            echo "=== build errors ==="
+            grep -nE "error:|fatal error|ninja: build stopped|FAILED:" "$GITHUB_WORKSPACE/node-build.log" 2>/dev/null | head -n 60 || true
+            echo
+            echo "=== last 200 build lines ==="
+            tail -n 200 "$GITHUB_WORKSPACE/node-build.log" 2>/dev/null || echo "no build log"
           } > artifact/error.txt 2>&1
           wc -l artifact/error.txt
 
