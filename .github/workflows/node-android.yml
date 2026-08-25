@@ -34,7 +34,7 @@ jobs:
           local-cache: false
 
       - name: Restore compiler cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/.ccache
           key: node-ccache-${{ inputs.node_tag }}-${{ github.run_id }}
@@ -130,6 +130,7 @@ jobs:
             --cross-compiling \
             --without-npm \
             --without-node-snapshot \
+            --v8-disable-temporal-support \
             --openssl-no-asm \
             --with-intl=small-icu \
             --ninja 2>&1 | tee "$GITHUB_WORKSPACE/node-configure.log"
@@ -190,6 +191,13 @@ jobs:
               title: `Node build failed: run ${context.runId}`,
               body: '```\n' + log + '\n```',
             })
+
+      - name: Save compiler cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ccache
+          key: node-ccache-${{ inputs.node_tag }}-${{ github.run_id }}
 
       - name: Upload artifact
         if: always()
