@@ -144,7 +144,7 @@ public class NodeService extends Service {
         builder.redirectErrorStream(true);
 
         Map<String, String> environment = builder.environment();
-        environment.put("HOME", home.getAbsolutePath());
+        environment.put("HOME", workspace.getAbsolutePath());
         environment.put("TMPDIR", tmp.getAbsolutePath());
         environment.put("TMP", tmp.getAbsolutePath());
         environment.put("PATH", getApplicationInfo().nativeLibraryDir + ":/system/bin:/system/xbin");
@@ -156,6 +156,7 @@ public class NodeService extends Service {
         environment.put("XDG_DATA_HOME", new File(home, ".local/share").getAbsolutePath());
         environment.put("XDG_CONFIG_HOME", new File(home, ".config").getAbsolutePath());
         environment.put("XDG_CACHE_HOME", new File(home, ".cache").getAbsolutePath());
+        environment.put("XDG_STATE_HOME", new File(home, ".local/state").getAbsolutePath());
 
         Process started = builder.start();
         synchronized (lock) {
