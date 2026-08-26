@@ -7,7 +7,7 @@ import { createRoutes } from "@opencode-ai/server/routes"
 import { Context, Layer } from "effect"
 import * as Effect from "effect/Effect"
 import { HttpRouter, HttpServer } from "effect/unstable/http"
-import { createReadStream, existsSync, statSync } from "node:fs"
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs"
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http"
 import path from "node:path"
 
@@ -15,6 +15,7 @@ const publicPort = Number(process.env.OPENCODE_PORT ?? "4096")
 const hostname = process.env.OPENCODE_HOSTNAME ?? "127.0.0.1"
 const password = process.env.OPENCODE_PASSWORD ?? ""
 const webDir = process.env.OPENCODE_WEB_DIR ? path.resolve(process.env.OPENCODE_WEB_DIR) : ""
+const workspace = process.env.OPENCODE_WORKSPACE ?? process.cwd()
 
 const mimeTypes: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -64,7 +65,18 @@ function resolveStatic(pathname: string) {
   return candidate
 }
 
+function sendIndex(res: ServerResponse, file: string) {
+  const script = `<script>window.__NXOPENCODE_HOME__=${JSON.stringify(workspace)}</script>`
+  const html = readFileSync(file, "utf8").replace("<head>", `<head>${script}`)
+  res.writeHead(200, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "no-cache",
+  })
+  res.end(html)
+}
+
 function sendFile(res: ServerResponse, file: string, cache: boolean) {
+  if (path.basename(file) === "index.html") return sendIndex(res, file)
   const extension = path.extname(file).toLowerCase()
   res.writeHead(200, {
     "Content-Type": mimeTypes[extension] ?? "application/octet-stream",

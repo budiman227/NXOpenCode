@@ -54,6 +54,9 @@ jobs:
           cd work/packages/cli
           MOBILE_OUTDIR="$GITHUB_WORKSPACE/staging/runtime" bun run mobile/build.ts
 
+      - name: Patch the directory picker
+        run: node scripts/patch-app.mjs work
+
       - name: Build web interface
         working-directory: work/packages/app
         run: bun run build
