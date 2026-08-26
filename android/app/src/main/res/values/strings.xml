@@ -13,4 +13,11 @@
     <string name="error_node_missing">Node runtime not found in the package</string>
     <string name="error_timeout">Server did not become ready in time</string>
     <string name="error_exited">Server process exited unexpectedly</string>
+    <string name="new_project_title">New project</string>
+    <string name="new_project_hint">Project name</string>
+    <string name="new_project_create">Create</string>
+    <string name="new_project_cancel">Cancel</string>
+    <string name="new_project_created">Created %1$s</string>
+    <string name="new_project_failed">Could not create the project folder</string>
+    <string name="storage_rationale">Grant storage access so projects can live in shared storage</string>
 </resources>

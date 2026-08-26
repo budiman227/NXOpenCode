@@ -1,7 +1,10 @@
 package com.nxteam.nxopencode;
 
 import android.annotation.SuppressLint;
+import android.app.AlertDialog;
 import android.content.Intent;
+import android.net.Uri;
+import android.provider.Settings;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
@@ -10,7 +13,12 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
+import android.widget.Toast;
+
+import java.io.File;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
@@ -21,6 +29,7 @@ public class MainActivity extends AppCompatActivity implements NodeService.Statu
     private WebView webView;
     private View overlay;
     private TextView statusView;
+    private Button newProjectButton;
     private boolean loaded;
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -32,6 +41,13 @@ public class MainActivity extends AppCompatActivity implements NodeService.Statu
         webView = findViewById(R.id.web_view);
         overlay = findViewById(R.id.overlay);
         statusView = findViewById(R.id.status);
+        newProjectButton = findViewById(R.id.new_project);
+        newProjectButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                showNewProjectDialog();
+            }
+        });
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -65,6 +81,7 @@ public class MainActivity extends AppCompatActivity implements NodeService.Statu
         });
 
         requestNotificationPermission();
+        requestStoragePermission();
 
         NodeService.setListener(this);
         String existing = NodeService.currentUrl();
@@ -76,6 +93,42 @@ public class MainActivity extends AppCompatActivity implements NodeService.Statu
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent);
             else startService(intent);
         }
+    }
+
+    private void requestStoragePermission() {
+        if (Workspace.hasFullStorageAccess(this)) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                intent.setData(Uri.parse("package:" + getPackageName()));
+                startActivity(intent);
+            } catch (Exception ignored) {
+            }
+            return;
+        }
+        ActivityCompat.requestPermissions(this, new String[]{
+                "android.permission.READ_EXTERNAL_STORAGE",
+                "android.permission.WRITE_EXTERNAL_STORAGE"}, 2);
+    }
+
+    private void showNewProjectDialog() {
+        final EditText input = new EditText(this);
+        input.setHint(R.string.new_project_hint);
+        input.setSingleLine(true);
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.new_project_title)
+                .setView(input)
+                .setPositiveButton(R.string.new_project_create, (dialog, which) -> {
+                    File created = Workspace.createProject(MainActivity.this, input.getText().toString());
+                    if (created == null) {
+                        Toast.makeText(this, R.string.new_project_failed, Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    Toast.makeText(this, getString(R.string.new_project_created, created.getAbsolutePath()),
+                            Toast.LENGTH_LONG).show();
+                })
+                .setNegativeButton(R.string.new_project_cancel, null)
+                .show();
     }
 
     private void requestNotificationPermission() {
@@ -98,6 +151,7 @@ public class MainActivity extends AppCompatActivity implements NodeService.Statu
         loaded = true;
         overlay.setVisibility(View.GONE);
         webView.setVisibility(View.VISIBLE);
+        newProjectButton.setVisibility(View.VISIBLE);
         webView.loadUrl(url);
     }
 
@@ -105,6 +159,7 @@ public class MainActivity extends AppCompatActivity implements NodeService.Statu
     public void onFailure(String message) {
         overlay.setVisibility(View.VISIBLE);
         webView.setVisibility(View.GONE);
+        newProjectButton.setVisibility(View.GONE);
         setStatus(getString(R.string.error_prefix) + "\n\n" + message);
     }
 

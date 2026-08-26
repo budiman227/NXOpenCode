@@ -132,7 +132,7 @@ public class NodeService extends Service {
         int port = findFreePort();
         File home = new File(getFilesDir(), "home");
         File tmp = new File(getFilesDir(), "tmp");
-        File workspace = new File(getFilesDir(), "workspace");
+        File workspace = Workspace.prepare(this);
 
         List<String> command = new ArrayList<String>();
         command.add(nodeBinary.getAbsolutePath());
