@@ -124,11 +124,22 @@ public class MainActivity extends AppCompatActivity implements NodeService.Statu
                         Toast.makeText(this, R.string.new_project_failed, Toast.LENGTH_LONG).show();
                         return;
                     }
-                    Toast.makeText(this, getString(R.string.new_project_created, created.getAbsolutePath()),
-                            Toast.LENGTH_LONG).show();
+                    openProject(created);
                 })
                 .setNegativeButton(R.string.new_project_cancel, null)
                 .show();
+    }
+
+    private void openProject(File directory) {
+        if (!loaded) {
+            Toast.makeText(this, getString(R.string.new_project_created, directory.getAbsolutePath()),
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        String encoded = Uri.encode(directory.getAbsolutePath());
+        String script = "window.dispatchEvent(new CustomEvent(\"opencode:deep-link\","
+                + "{detail:{urls:[\"opencode://open-project?directory=" + encoded + "\"]}}))";
+        webView.evaluateJavascript(script, null);
     }
 
     private void requestNotificationPermission() {
