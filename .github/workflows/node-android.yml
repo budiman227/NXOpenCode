@@ -212,8 +212,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="node-arm64-${{ inputs.node_tag }}"
-          gh release delete "$TAG" --yes --cleanup-tag || true
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
           gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
             --title "Node.js for Android arm64 (${{ inputs.node_tag }})" \
             --notes "Cross-compiled with NDK r29, API ${{ inputs.sdk_version }}, small-icu, Termux Android patches." \
             artifact/libnode.so artifact/libc++_shared.so
