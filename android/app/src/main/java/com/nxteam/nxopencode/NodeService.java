@@ -148,6 +148,7 @@ public class NodeService extends Service {
         environment.put("TMPDIR", tmp.getAbsolutePath());
         environment.put("TMP", tmp.getAbsolutePath());
         environment.put("PATH", getApplicationInfo().nativeLibraryDir + ":/system/bin:/system/xbin");
+        environment.put("LD_LIBRARY_PATH", getApplicationInfo().nativeLibraryDir + ":/system/lib64:/vendor/lib64");
         environment.put("LANG", "en_US.UTF-8");
         environment.put("OPENCODE_HOSTNAME", "127.0.0.1");
         environment.put("OPENCODE_PORT", String.valueOf(port));
