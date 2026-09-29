@@ -40,3 +40,9 @@ if (!source.includes(before)) {
 
 writeFileSync(target, source.replace(before, after))
 console.log("patched dialog-select-directory.tsx")
+const sdk = path.join(root, "packages/sdk/js/src/v2/gen/sdk.gen.ts")
+try {
+  const sdkSource = readFileSync(sdk, "utf8")
+  writeFileSync(sdk, sdkSource.replaceAll("/pty/shells", "/api/pty/shells"))
+  console.log("patched PTY shell endpoint")
+} catch {}
